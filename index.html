@@ -337,35 +337,32 @@
         // ===== Show Dashboard =====
         function showDashboard() {
             const batches = Object.values(getBatchIndex()).sort((a, b) => parseInt(b.id) - parseInt(a.id));
-            const displayBatches = batches.length ? batches : [{
-                id: '1',
-                farmerName: 'John Doe',
-                cropType: 'Tomato',
-                quantity: '100',
-                harvestDate: '2025-09-07',
-                notes: 'Organic, pesticide-free',
-                status: 'Registered'
-            }];
+
+            if (batches.length === 0) {
+                fadeInView(`<section class="card"><h2>Batches</h2><p>No batches available.</p></section>`);
+                return;
+            }
 
             fadeInView(`<section class="card"><h2>Batches</h2><div style="margin-top:12px"><div class="list" id="batches-list"></div></div></section>`);
             const listEl = document.getElementById('batches-list');
             listEl.innerHTML = '';
 
-            displayBatches.forEach(b => {
+            batches.forEach(b => {
                 const div = document.createElement('div');
                 div.className = 'card';
                 div.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div><div class="small">Batch ID</div><div style="font-weight:700">#${b.id}</div></div>
-            <div class="small">Status<br><strong>${b.status || 'Registered'}</strong></div>
-          </div>
-          <div style="margin-top:8px">Crop: ${b.cropType || '-'}<br>Farmer: ${b.farmerName || '-'}</div>
-          <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-            <button class="btn" data-batch="${b.id}" data-action="view">View</button>
-            <button class="btn secondary" data-batch="${b.id}" data-action="retail">Retail Arrival</button>
-            <div class="qr-box" id="qr-${b.id}"></div>
-          </div>
-        `;
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div class="small">Batch ID</div><div style="font-weight:700">#${b.id}</div></div>
+        <div class="small">Status<br><strong>${b.status || 'Registered'}</strong></div>
+      </div>
+      <div style="margin-top:8px">Crop: ${b.cropType || '-'}<br>Farmer: ${b.farmerName || '-'}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" data-batch="${b.id}" data-action="view">View</button>
+        <button class="btn secondary" data-batch="${b.id}" data-action="retail">Retail Arrival</button>
+        <button class="btn danger" style="background:#dc2626" data-batch="${b.id}" data-action="delete">Delete</button>
+        <div class="qr-box" id="qr-${b.id}"></div>
+      </div>
+    `;
                 listEl.appendChild(div);
 
                 const qrBox = div.querySelector(`#qr-${b.id}`);
@@ -381,11 +378,20 @@
                         const action = btn.getAttribute('data-action');
                         if (action === 'view') {
                             alert(`Batch Info:\nFarmer: ${b.farmerName}\nCrop: ${b.cropType}\nQuantity: ${b.quantity}`);
-                        } else if (action === 'retail') {
+                        }
+                        else if (action === 'retail') {
                             alert(`Retail Arrival updated for Batch #${b.id}`);
                             b.status = 'Arrived at Retail';
                             saveBatchIndex(b);
                             showDashboard();
+                        }
+                        else if (action === 'delete') {
+                            if (confirm(`Delete Batch #${b.id}?`)) {
+                                const index = getBatchIndex();
+                                delete index[b.id];
+                                localStorage.setItem('batches', JSON.stringify(index));
+                                showDashboard();
+                            }
                         }
                     });
                 });
@@ -395,19 +401,19 @@
         // ===== Show Register Form =====
         function showRegister() {
             fadeInView(`<section class="card"><h2>Register New Batch</h2>
-        <form id="register-form" style="margin-top:12px">
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
-            <input name="farmerName" placeholder="Farmer name" required />
-            <input name="cropType" placeholder="Crop type (Tomato)" required />
-            <input name="quantity" placeholder="Quantity (kg)" required />
-            <input name="harvestDate" type="date" required />
-          </div>
-          <textarea name="notes" placeholder="Notes (organic, pesticide-free)" style="margin-top:10px"></textarea>
-          <div style="margin-top:10px; display:flex; gap:8px;">
-            <button class="btn">Register</button>
-            <button type="button" class="btn secondary" id="clear-reg">Clear</button>
-          </div>
-        </form></section>`);
+    <form id="register-form" style="margin-top:12px">
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+        <input name="farmerName" placeholder="Farmer name" required />
+        <input name="cropType" placeholder="Crop type (Tomato)" required />
+        <input name="quantity" placeholder="Quantity (kg)" required />
+        <input name="harvestDate" type="date" required />
+      </div>
+      <textarea name="notes" placeholder="Notes (organic, pesticide-free)" style="margin-top:10px"></textarea>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="btn">Register</button>
+        <button type="button" class="btn secondary" id="clear-reg">Clear</button>
+      </div>
+    </form></section>`);
 
             const registerForm = document.getElementById('register-form');
             registerForm.addEventListener('submit', function (e) {
@@ -443,19 +449,23 @@
         // ===== Show Transport Update =====
         function showTransport() {
             const batches = Object.values(getBatchIndex());
+            if (batches.length === 0) {
+                fadeInView(`<section class="card"><h2>Transport / Handover Update</h2><p>No batches available.</p></section>`);
+                return;
+            }
             fadeInView(`<section class="card"><h2>Transport / Handover Update</h2>
-        <div style="margin-top:10px">
-          <label class="small">Select Batch</label>
-          <select id="select-batch">${batches.map(b => `<option value="${b.id}">#${b.id} — ${b.cropType} — ${b.farmerName}</option>`).join('')}</select>
-        </div>
-        <form id="transport-form" style="margin-top:10px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <input name="transporterName" placeholder="Transporter name" required />
-            <input name="location" placeholder="Location / checkpoint" required />
-          </div>
-          <textarea name="notes" placeholder="Notes" style="margin-top:10px"></textarea>
-          <button class="btn" style="margin-top:10px">Update</button>
-        </form></section>`);
+    <div style="margin-top:10px">
+      <label class="small">Select Batch</label>
+      <select id="select-batch">${batches.map(b => `<option value="${b.id}">#${b.id} — ${b.cropType} — ${b.farmerName}</option>`).join('')}</select>
+    </div>
+    <form id="transport-form" style="margin-top:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <input name="transporterName" placeholder="Transporter name" required />
+        <input name="location" placeholder="Location / checkpoint" required />
+      </div>
+      <textarea name="notes" placeholder="Notes" style="margin-top:10px"></textarea>
+      <button class="btn" style="margin-top:10px">Update</button>
+    </form></section>`);
 
             document.getElementById('transport-form').addEventListener('submit', e => {
                 e.preventDefault();
@@ -474,10 +484,10 @@
         // ===== Consumer Scan =====
         function showConsumer() {
             fadeInView(`<section class="card"><h2>Consumer Scan</h2>
-        <p>Scan QR or enter Batch ID</p>
-        <input id="scan-input" placeholder="Enter Batch ID" />
-        <button id="scan-btn" class="btn" style="margin-top:8px">Scan</button>
-        <div id="scan-output" style="margin-top:12px; display:flex; gap:16px; flex-wrap:wrap;"></div></section>`);
+    <p>Scan QR or enter Batch ID</p>
+    <input id="scan-input" placeholder="Enter Batch ID" />
+    <button id="scan-btn" class="btn" style="margin-top:8px">Scan</button>
+    <div id="scan-output" style="margin-top:12px; display:flex; gap:16px; flex-wrap:wrap;"></div></section>`);
 
             const scanBtn = document.getElementById('scan-btn');
             const scanInput = document.getElementById('scan-input');
@@ -486,7 +496,11 @@
             scanBtn.addEventListener('click', () => {
                 const val = scanInput.value.trim();
                 const batches = getBatchIndex();
-                const batch = batches[String(val)] || { id: '1', farmerName: 'John Doe', cropType: 'Tomato', quantity: '100', harvestDate: '2025-09-07', notes: 'Organic, pesticide-free', status: 'Registered' };
+                const batch = batches[String(val)];
+                if (!batch) {
+                    output.innerHTML = "<p>No batch found with this ID.</p>";
+                    return;
+                }
                 const metadata = ipfsGet(batch.cid) || batch;
 
                 output.innerHTML = '';
@@ -500,15 +514,36 @@
                 infoCard.className = 'card';
                 infoCard.style.flex = '1'; infoCard.style.minWidth = '200px';
                 infoCard.innerHTML = `<h3>Batch #${metadata.id}</h3>
-          <p><strong>Farmer:</strong> ${metadata.farmerName}</p>
-          <p><strong>Crop:</strong> ${metadata.cropType}</p>
-          <p><strong>Quantity:</strong> ${metadata.quantity}</p>
-          <p><strong>Harvest Date:</strong> ${metadata.harvestDate}</p>
-          <p><strong>Notes:</strong> ${metadata.notes}</p>
-          <p><strong>Status:</strong> ${metadata.status || 'Registered'}</p>`;
+      <p><strong>Farmer:</strong> ${metadata.farmerName}</p>
+      <p><strong>Crop:</strong> ${metadata.cropType}</p>
+      <p><strong>Quantity:</strong> ${metadata.quantity}</p>
+      <p><strong>Harvest Date:</strong> ${metadata.harvestDate}</p>
+      <p><strong>Notes:</strong> ${metadata.notes}</p>
+      <p><strong>Status:</strong> ${metadata.status || 'Registered'}</p>`;
                 output.appendChild(infoCard);
             });
         }
+
+        // ===== Export Data to Excel =====
+        document.getElementById('export-state').addEventListener('click', () => {
+            const batches = Object.values(getBatchIndex());
+            if (batches.length === 0) { alert("No data to export."); return; }
+
+            let csv = "Batch ID,Farmer,Crop,Quantity,Harvest Date,Notes,Status\n";
+            batches.forEach(b => {
+                csv += `${b.id},${b.farmerName},${b.cropType},${b.quantity},${b.harvestDate},${b.notes},${b.status}\n`;
+            });
+
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "batches.csv";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
 
         // ===== Navigation =====
         document.getElementById('nav-dashboard').addEventListener('click', showDashboard);
@@ -516,6 +551,7 @@
         document.getElementById('nav-transport').addEventListener('click', showTransport);
         document.getElementById('nav-consumer').addEventListener('click', showConsumer);
         showDashboard();
+
     </script>
 </body>
 
