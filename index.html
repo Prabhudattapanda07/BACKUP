@@ -333,6 +333,7 @@
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.12/html5-qrcode.min.js"></script>
 </head>
 
 <body>
@@ -367,6 +368,7 @@
       for production.</footer>
   </div>
 
+  
 <script>
   // ===== Dark Mode =====
   document.getElementById('darkSwitch').addEventListener('change', e => {
@@ -466,7 +468,7 @@
       `;
       listEl.appendChild(div);
 
-      // QR contains full batch info and link with hash
+      // QR contains full batch info
       const qrBox = div.querySelector(`#qr-${b.id}`);
       const qr = document.createElement('canvas');
       qr.style.width = '64px';
@@ -598,11 +600,12 @@
     });
   }
 
-  // ===== Show Consumer Scan (automatic QR scan) =====
+  // ===== Show Consumer Scan with live QR camera =====
   function showConsumer() {
     fadeInView(`
       <section class="card">
         <h2>Consumer Scan</h2>
+        <div id="qr-reader" style="width:100%;margin-top:12px;"></div>
         <div id="scan-result" style="margin-top:12px"></div>
       </section>
     `);
@@ -622,16 +625,23 @@
       `;
     }
 
-    // Check if URL hash has QR JSON
-    if (window.location.hash.length > 1) {
-      try {
-        const decoded = decodeURIComponent(window.location.hash.slice(1));
-        const data = JSON.parse(decoded);
-        renderBatch(data);
-      } catch (err) {
-        scanResult.innerHTML = '<div class="small">Invalid QR data</div>';
-      }
-    }
+    const html5QrCode = new Html5Qrcode("qr-reader");
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      (decodedText, decodedResult) => {
+        try {
+          const hashIndex = decodedText.indexOf('#');
+          const jsonData = decodeURIComponent(decodedText.slice(hashIndex + 1));
+          const data = JSON.parse(jsonData);
+          renderBatch(data);
+          html5QrCode.stop();
+        } catch (err) {
+          scanResult.innerHTML = '<div class="small">Invalid QR data</div>';
+        }
+      },
+      errorMessage => {}
+    ).catch(err => console.error(err));
   }
 
   // ===== Button Actions =====
@@ -651,7 +661,6 @@
           <button id="back" class="btn secondary">Back</button>
           <h2>Batch #${batch}</h2>
           <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-
             <div class="card">
               <h3>Metadata</h3>
               <p><strong>Farmer:</strong> ${metadata.farmerName}</p>
@@ -660,12 +669,10 @@
               <p><strong>Harvest Date:</strong> ${metadata.harvestDate}</p>
               <p><strong>Notes:</strong> ${metadata.notes}</p>
             </div>
-
             <div class="card">
               <h3>On-chain Events</h3>
               <div id="events-area"></div>
             </div>
-
           </div>
         </section>
       `);
@@ -731,14 +738,8 @@
     const bid = params.get('batch');
     if (bid) {
       showConsumer();
-      setTimeout(() => {
-        document.getElementById('scanId')?.value = bid;
-        document.getElementById('do-scan')?.click();
-      }, 250);
     } else {
       showDashboard();
     }
   })();
 </script>
-</body>
-</html>
