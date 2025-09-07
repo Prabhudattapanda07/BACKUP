@@ -609,23 +609,32 @@ function showConsumer() {
   const scanInput = document.getElementById('scan-input');
   const output = document.getElementById('scan-output');
 
+  // Sample batch to show if no localStorage data
+  const sampleBatch = {
+    id: '1',
+    farmerName: 'John Doe',
+    cropType: 'Tomato',
+    quantity: '100',
+    harvestDate: '2025-09-07',
+    notes: 'Organic, pesticide-free'
+  };
+
   scanBtn.addEventListener('click', () => {
     const val = scanInput.value.trim();
     const batches = getBatchIndex();
-    const batch = batches[String(val)];
-    if (!batch) return alert('Batch not found');
+    const batch = batches[String(val)] || sampleBatch; // fallback to sample
 
     const metadata = ipfsGet(batch.cid) || batch;
 
     output.innerHTML = ''; // clear previous
 
-    // QR code points to the page URL with batch ID hash
+    // QR code points to your GitHub Pages URL
     const qrCanvas = document.createElement('canvas');
     qrCanvas.style.width = '128px';
     qrCanvas.style.height = '128px';
     output.appendChild(qrCanvas);
 
-    const qrValue = `${window.location.origin}${window.location.pathname}#batch=${metadata.id}`;
+    const qrValue = `https://prabhudattapanda07.github.io/BACKUP/#batch=${metadata.id}`;
     new QRious({ element: qrCanvas, value: qrValue, size: 128 });
 
     // Info card
@@ -654,7 +663,6 @@ function showConsumer() {
     }
   }
 }
-
 
     // ===== Export data =====
     document.getElementById('export-state').addEventListener('click', () => {
