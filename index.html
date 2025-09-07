@@ -367,297 +367,379 @@
       for production.</footer>
   </div>
 
-  <script>
-    const GITHUB_LINK = 'https://prabhudattapanda07.github.io/BACKUP/';
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script>
+  // ===== Dark Mode =====
+  document.getElementById('darkSwitch').addEventListener('change', e => {
+    document.body.classList.toggle('dark-mode', e.target.checked);
+  });
 
-    // ===== Dark Mode =====
-    document.getElementById('darkSwitch').addEventListener('change', e => {
-      document.body.classList.toggle('dark-mode', e.target.checked);
+  // ===== Reset data =====
+  document.getElementById('reset-data').addEventListener('click', () => {
+    if (confirm('Are you sure you want to clear all data?')) localStorage.clear(), location.reload();
+  });
+
+  // ===== Blockchain simulation =====
+  function randomHash(prefix = '0x') {
+    return prefix + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+  }
+
+  function ipfsAdd(obj) {
+    const cid = 'CID' + Math.random().toString(36).slice(2, 9);
+    localStorage.setItem('ipfs:' + cid, JSON.stringify(obj));
+    return cid;
+  }
+
+  function ipfsGet(cid) {
+    const raw = localStorage.getItem('ipfs:' + cid);
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  function chainEmit(event) {
+    const all = JSON.parse(localStorage.getItem('chainEvents') || '[]');
+    const ev = Object.assign({}, event, { txHash: randomHash('0x'), timestamp: new Date().toISOString() });
+    all.push(ev);
+    localStorage.setItem('chainEvents', JSON.stringify(all));
+    return ev;
+  }
+
+  function chainGetEventsByBatch(batchId) {
+    const all = JSON.parse(localStorage.getItem('chainEvents') || '[]');
+    return all.filter(e => e.batchId === batchId);
+  }
+
+  function saveBatchIndex(batch) {
+    const idx = JSON.parse(localStorage.getItem('batches') || '{}');
+    idx[batch.id] = batch;
+    localStorage.setItem('batches', JSON.stringify(idx));
+  }
+
+  function getBatchIndex() {
+    return JSON.parse(localStorage.getItem('batches') || '{}');
+  }
+
+  function nextBatchId() {
+    const id = parseInt(localStorage.getItem('nextBatchId') || '1', 10);
+    localStorage.setItem('nextBatchId', (id + 1).toString());
+    return id.toString();
+  }
+
+  const main = document.getElementById('main');
+
+  // ===== Fade view helper =====
+  function fadeInView(html) {
+    main.innerHTML = html;
+    main.classList.add('fade-view');
+    setTimeout(() => main.classList.add('show'), 50);
+  }
+
+  // ===== Show Dashboard with QR =====
+  function showDashboard() {
+    const batches = Object.values(getBatchIndex()).sort((a, b) => parseInt(b.id) - parseInt(a.id));
+    fadeInView(`
+      <section class="card">
+        <h2>Batches</h2>
+        <div style="margin-top:12px">
+          ${batches.length === 0 ? '<div class="small">No batches yet. Register one.</div>' : ''}
+          <div class="list" id="batches-list"></div>
+        </div>
+      </section>
+    `);
+    const listEl = document.getElementById('batches-list');
+    listEl.innerHTML = '';
+    batches.forEach(b => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="small">Batch ID</div>
+            <div style="font-weight:700">#${b.id}</div>
+          </div>
+          <div class="small">Status<br><strong>${b.status || 'Registered'}</strong></div>
+        </div>
+        <div style="margin-top:8px">Crop: ${b.cropType || '-'}<br>Farmer: ${b.farmerName || '-'}</div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button class="btn" data-batch="${b.id}" data-action="view">View</button>
+          <button class="btn secondary" data-batch="${b.id}" data-action="retail">Retail Arrival</button>
+          <div class="qr-box" id="qr-${b.id}"></div>
+        </div>
+      `;
+      listEl.appendChild(div);
+
+      // QR contains full batch info and link with hash
+      const qrBox = div.querySelector(`#qr-${b.id}`);
+      const qr = document.createElement('canvas');
+      qr.style.width = '64px';
+      qr.style.height = '64px';
+      qrBox.appendChild(qr);
+
+      const qrData = encodeURIComponent(JSON.stringify({
+        id: b.id,
+        cropType: b.cropType,
+        farmerName: b.farmerName,
+        quantity: b.quantity || '-',
+        harvestDate: b.harvestDate || '-',
+        notes: b.notes || '-'
+      }));
+
+      new QRious({ element: qr, value: `${window.location.href}#${qrData}`, size: 64 });
+    });
+  }
+
+  // ===== Show Register Form =====
+  function showRegister() {
+    fadeInView(`
+      <section class="card">
+        <h2>Register New Batch</h2>
+        <form id="register-form" style="margin-top:12px">
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+            <input name="farmerName" placeholder="Farmer name" required />
+            <input name="cropType" placeholder="Crop type (Tomato)" required />
+            <input name="quantity" placeholder="Quantity (kg)" required />
+            <input name="harvestDate" type="date" required />
+          </div>
+          <textarea name="notes" placeholder="Notes (organic, pesticide-free)" style="margin-top:10px"></textarea>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn">Register</button>
+            <button type="button" class="btn secondary" id="clear-reg">Clear</button>
+          </div>
+        </form>
+      </section>
+    `);
+
+    const registerForm = document.getElementById('register-form');
+    registerForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const fm = new FormData(registerForm);
+      const id = nextBatchId();
+      const metadata = {
+        id,
+        farmerName: fm.get('farmerName'),
+        cropType: fm.get('cropType'),
+        quantity: fm.get('quantity'),
+        harvestDate: fm.get('harvestDate'),
+        notes: fm.get('notes'),
+        registeredAt: new Date().toISOString()
+      };
+      const cid = ipfsAdd(metadata);
+      saveBatchIndex({
+        id,
+        cid,
+        farmerName: metadata.farmerName,
+        cropType: metadata.cropType,
+        quantity: metadata.quantity,
+        harvestDate: metadata.harvestDate,
+        notes: metadata.notes,
+        status: 'Registered'
+      });
+      chainEmit({
+        type: 'REGISTER',
+        batchId: id,
+        cid,
+        actor: metadata.farmerName
+      });
+      showDashboard();
     });
 
-    // ===== Reset data =====
-    document.getElementById('reset-data').addEventListener('click', () => {
-      if (confirm('Are you sure you want to clear all data?')) localStorage.clear(), location.reload();
+    document.getElementById('clear-reg').addEventListener('click', () => {
+      registerForm.reset();
     });
+  }
 
-    // ===== Blockchain simulation =====
-    function randomHash(prefix = '0x') {
-      return prefix + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
-    }
+  // ===== Show Transport Update =====
+  function showTransport() {
+    const batches = Object.values(getBatchIndex());
+    fadeInView(`
+      <section class="card">
+        <h2>Transport / Handover Update</h2>
+        <div style="margin-top:10px">
+          <label class="small">Select Batch</label>
+          <select id="select-batch">
+            ${batches.map(b => `<option value="${b.id}">#${b.id} — ${b.cropType} — ${b.farmerName}</option>`).join('')}
+          </select>
+        </div>
+        <form id="transport-form" style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <input name="transporterName" placeholder="Transporter name" required />
+            <input name="location" placeholder="Location / checkpoint" required />
+          </div>
+          <input name="temp" placeholder="Temperature (optional)" style="margin-top:10px" />
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn">Send Update</button>
+            <button type="button" class="btn secondary" id="clear-trans">Clear</button>
+          </div>
+        </form>
+      </section>
+    `);
 
-    function ipfsAdd(obj) {
-      const cid = 'CID' + Math.random().toString(36).slice(2, 9);
-      localStorage.setItem('ipfs:' + cid, JSON.stringify(obj));
-      return cid;
-    }
+    const transportForm = document.getElementById('transport-form');
+    transportForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const fm = new FormData(transportForm);
+      const bid = document.getElementById('select-batch').value;
+      const telemetry = {
+        transporterName: fm.get('transporterName'),
+        location: fm.get('location'),
+        temp: fm.get('temp'),
+        time: new Date().toISOString()
+      };
+      const cid = ipfsAdd({ telemetry, batchId: bid });
+      chainEmit({ type: 'TRANSPORT_UPDATE', batchId: bid, cid, actor: fm.get('transporterName') });
 
-    function ipfsGet(cid) {
-      const raw = localStorage.getItem('ipfs:' + cid);
-      return raw ? JSON.parse(raw) : null;
-    }
-
-    function chainEmit(event) {
-      const all = JSON.parse(localStorage.getItem('chainEvents') || '[]');
-      const ev = Object.assign({}, event, { txHash: randomHash('0x'), timestamp: new Date().toISOString() });
-      all.push(ev);
-      localStorage.setItem('chainEvents', JSON.stringify(all));
-      return ev;
-    }
-
-    function chainGetEventsByBatch(batchId) {
-      const all = JSON.parse(localStorage.getItem('chainEvents') || '[]');
-      return all.filter(e => e.batchId === batchId);
-    }
-
-    function saveBatchIndex(batch) {
-      const idx = JSON.parse(localStorage.getItem('batches') || '{}');
-      idx[batch.id] = batch;
+      const idx = getBatchIndex();
+      idx[bid].status = 'In Transit';
       localStorage.setItem('batches', JSON.stringify(idx));
+
+      showDashboard();
+    });
+
+    document.getElementById('clear-trans').addEventListener('click', () => {
+      transportForm.reset();
+    });
+  }
+
+  // ===== Show Consumer Scan (automatic QR scan) =====
+  function showConsumer() {
+    fadeInView(`
+      <section class="card">
+        <h2>Consumer Scan</h2>
+        <div id="scan-result" style="margin-top:12px"></div>
+      </section>
+    `);
+
+    const scanResult = document.getElementById('scan-result');
+
+    function renderBatch(data) {
+      scanResult.innerHTML = `
+        <div class="card">
+          <h3>Batch #${data.id}</h3>
+          <div>Farmer: ${data.farmerName}</div>
+          <div>Crop: ${data.cropType}</div>
+          <div>Quantity: ${data.quantity}</div>
+          <div>Harvested: ${data.harvestDate}</div>
+          <div>Notes: ${data.notes}</div>
+        </div>
+      `;
     }
 
-    function getBatchIndex() {
-      return JSON.parse(localStorage.getItem('batches') || '{}');
-    }
-
-    function nextBatchId() {
-      const id = parseInt(localStorage.getItem('nextBatchId') || '1', 10);
-      localStorage.setItem('nextBatchId', (id + 1).toString());
-      return id.toString();
-    }
-
-    const main = document.getElementById('main');
-
-    function fadeInView(html) {
-      main.innerHTML = html;
-      main.classList.add('fade-view');
-      setTimeout(() => main.classList.add('show'), 50);
-    }
-
-    // ===== Show Dashboard =====
-    function showDashboard() {
-      const batches = Object.values(getBatchIndex()).sort((a, b) => parseInt(b.id) - parseInt(a.id));
-      fadeInView(`
-        <section class="card">
-          <h2>Batches</h2>
-          <div style="margin-top:12px">
-            ${batches.length === 0 ? '<div class="small">No batches yet. Register one.</div>' : ''}
-            <div class="list" id="batches-list"></div>
-          </div>
-        </section>
-      `);
-      const listEl = document.getElementById('batches-list');
-      listEl.innerHTML = '';
-      batches.forEach(b => {
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div>
-              <div class="small">Batch ID</div>
-              <div style="font-weight:700">#${b.id}</div>
-            </div>
-            <div class="small">Status<br><strong>${b.status || 'Registered'}</strong></div>
-          </div>
-          <div style="margin-top:8px">Crop: ${b.cropType || '-'}<br>Farmer: ${b.farmerName || '-'}</div>
-          <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-            <button class="btn" data-batch="${b.id}" data-action="view">View</button>
-            <button class="btn secondary" data-batch="${b.id}" data-action="retail">Retail Arrival</button>
-            <div class="qr-box" id="qr-${b.id}"></div>
-          </div>
-        `;
-        listEl.appendChild(div);
-        const qrBox = div.querySelector(`#qr-${b.id}`);
-        const qr = document.createElement('canvas');
-        qr.style.width = '64px';
-        qr.style.height = '64px';
-        qrBox.appendChild(qr);
-        new QRious({ element: qr, value: GITHUB_LINK + '?batch=' + b.id, size: 64 });
-
-        const events = chainGetEventsByBatch(b.id);
-        const lastEvent = events[events.length - 1];
-        if (lastEvent) {
-          div.style.border = '2px solid ' + (lastEvent.type === 'RETAIL_ARRIVAL' ? '#38a169' : '#3182ce');
-          div.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
-        }
-      });
-    }
-
-    // ===== Show Register Batch =====
-function showRegister() {
-  fadeInView(`
-    <section class="card">
-      <h2>Register New Batch</h2>
-      <div style="margin-top:10px">
-        <form id="register-form">
-          <input type="text" name="farmerName" placeholder="Farmer Name" required /><br><br>
-          <input type="text" name="cropType" placeholder="Crop Type" required /><br><br>
-          <input type="number" name="quantity" placeholder="Quantity" required /><br><br>
-          <input type="date" name="harvestDate" placeholder="Harvest Date" required /><br><br>
-          <button class="btn" type="submit">Register Batch</button>
-        </form>
-      </div>
-    </section>
-  `);
-
-  document.getElementById('register-form').addEventListener('submit', e => {
-    e.preventDefault();
-    const form = e.target;
-    const batchId = nextBatchId();
-    const data = {
-      id: batchId,
-      farmerName: form.farmerName.value,
-      cropType: form.cropType.value,
-      quantity: form.quantity.value,
-      harvestDate: form.harvestDate.value
-    };
-
-    // Save to IPFS simulation
-    const cid = ipfsAdd(data);
-    data.cid = cid;
-    saveBatchIndex(data);
-
-    // Emit registration event
-    chainEmit({ batchId, type: 'REGISTERED', actor: data.farmerName, cid });
-
-    alert('Batch registered with ID #' + batchId);
-    showDashboard();
-  });
-}
-
-// ===== Show Transport Update =====
-function showTransport() {
-  const batches = Object.values(getBatchIndex());
-  if (batches.length === 0) return alert('No batches available to update!');
-
-  fadeInView(`
-    <section class="card">
-      <h2>Transport / Retail Update</h2>
-      <div style="margin-top:10px">
-        <form id="transport-form">
-          <select name="batchId" required>
-            <option value="">Select Batch</option>
-            ${batches.map(b => `<option value="${b.id}">#${b.id} - ${b.cropType} (${b.farmerName})</option>`).join('')}
-          </select><br><br>
-          <select name="status" required>
-            <option value="">Select Update</option>
-            <option value="TRANSPORT">Transported</option>
-            <option value="RETAIL_ARRIVAL">Arrived at Retail</option>
-          </select><br><br>
-          <input type="text" name="actor" placeholder="Actor Name" required /><br><br>
-          <button class="btn" type="submit">Submit Update</button>
-        </form>
-      </div>
-    </section>
-  `);
-
-  document.getElementById('transport-form').addEventListener('submit', e => {
-    e.preventDefault();
-    const form = e.target;
-    const batchId = form.batchId.value;
-    const status = form.status.value;
-    const actor = form.actor.value;
-
-    const batch = getBatchIndex()[batchId];
-    if (!batch) return alert('Batch not found');
-
-    // Update batch status
-    batch.status = status;
-    saveBatchIndex(batch);
-
-    // Emit transport/retail event
-    const cid = ipfsAdd(batch);
-    chainEmit({ batchId, type: status, actor, cid });
-
-    alert('Batch #' + batchId + ' updated successfully');
-    showDashboard();
-  });
-}
-
-    // ===== Show Consumer Scan =====
-    function showConsumer() {
-      fadeInView(`
-        <section class="card">
-          <h2>Consumer Scan</h2>
-          <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-            <input id="scanId" placeholder="Enter batch id (e.g., 1)" />
-            <button class="btn" id="do-scan">Scan / View</button>
-          </div>
-          <div id="scan-result" style="margin-top:12px"></div>
-        </section>
-      `);
-
-      document.getElementById('do-scan').addEventListener('click', () => {
-        const id = document.getElementById('scanId').value.trim();
-        if (!id) return alert('Enter a batch id');
-
-        const idx = getBatchIndex();
-        if (!idx[id]) return alert('Batch not found');
-
-        const meta = ipfsGet(idx[id].cid);
-        const events = chainGetEventsByBatch(id);
-
-        const out = document.getElementById('scan-result');
-        out.innerHTML = `
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div>
-                <div class="small">Batch</div>
-                <div style="font-weight:800;font-size:20px">#${id}</div>
-                <div>Farmer: ${meta.farmerName}</div>
-                <div>Crop: ${meta.cropType}</div>
-                <div>Quantity: ${meta.quantity}</div>
-                <div>Harvested: ${meta.harvestDate}</div>
-              </div>
-              <div id="big-qr"></div>
-            </div>
-            <div style="margin-top:12px">
-              <h3>Chain Events</h3>
-              <div id="events-list"></div>
-            </div>
-          </div>
-        `;
-
-        const qrEl = document.createElement('canvas');
-        qrEl.style.width = '120px';
-        qrEl.style.height = '120px';
-        document.getElementById('big-qr').appendChild(qrEl);
-        new QRious({ element: qrEl, value: GITHUB_LINK + '?batch=' + id, size: 120 });
-
-        const evList = document.getElementById('events-list');
-        evList.innerHTML = '';
-        events.forEach(ev => {
-          const eDiv = document.createElement('div');
-          eDiv.className = 'card';
-          eDiv.style.marginTop = '8px';
-          eDiv.innerHTML = `
-            <div class="small">${ev.type} — ${new Date(ev.timestamp).toLocaleString()}</div>
-            <div class="small">actor: ${ev.actor} | tx: ${ev.txHash}</div>
-            <div class="small">cid: ${ev.cid}</div>
-          `;
-          evList.appendChild(eDiv);
-        });
-      });
-    }
-
-    // ===== Navigation =====
-    document.getElementById('nav-dashboard').addEventListener('click', showDashboard);
-    document.getElementById('nav-register').addEventListener('click', showRegister);
-    document.getElementById('nav-transport').addEventListener('click', showTransport);
-    document.getElementById('nav-consumer').addEventListener('click', showConsumer);
-
-    // ===== Load initial view =====
-    (function () {
-      const params = new URLSearchParams(window.location.search);
-      const bid = params.get('batch');
-      if (bid) {
-        document.getElementById('nav-consumer').click();
-        setTimeout(() => document.getElementById('scanId').value = bid, 100);
-        setTimeout(() => document.getElementById('do-scan').click(), 200);
-      } else {
-        showDashboard();
+    // Check if URL hash has QR JSON
+    if (window.location.hash.length > 1) {
+      try {
+        const decoded = decodeURIComponent(window.location.hash.slice(1));
+        const data = JSON.parse(decoded);
+        renderBatch(data);
+      } catch (err) {
+        scanResult.innerHTML = '<div class="small">Invalid QR data</div>';
       }
-    })();
-  </script>
-</body>
+    }
+  }
 
+  // ===== Button Actions =====
+  main.addEventListener('click', function (e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const batch = btn.dataset.batch;
+
+    if (action === 'view') {
+      const idx = getBatchIndex();
+      const metadata = ipfsGet(idx[batch].cid);
+      const events = chainGetEventsByBatch(batch);
+
+      fadeInView(`
+        <section class="card">
+          <button id="back" class="btn secondary">Back</button>
+          <h2>Batch #${batch}</h2>
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+
+            <div class="card">
+              <h3>Metadata</h3>
+              <p><strong>Farmer:</strong> ${metadata.farmerName}</p>
+              <p><strong>Crop:</strong> ${metadata.cropType}</p>
+              <p><strong>Quantity:</strong> ${metadata.quantity} kg</p>
+              <p><strong>Harvest Date:</strong> ${metadata.harvestDate}</p>
+              <p><strong>Notes:</strong> ${metadata.notes}</p>
+            </div>
+
+            <div class="card">
+              <h3>On-chain Events</h3>
+              <div id="events-area"></div>
+            </div>
+
+          </div>
+        </section>
+      `);
+
+      const area = document.getElementById('events-area');
+      events.forEach(ev => {
+        const d = document.createElement('div');
+        d.className = 'card';
+        d.style.marginTop = '8px';
+        d.innerHTML = `
+          <div class="small">${ev.type} — ${new Date(ev.timestamp).toLocaleString()}</div>
+          <div class="small">actor: ${ev.actor} | tx: ${ev.txHash}</div>
+          <div class="small">cid: ${ev.cid}</div>
+        `;
+        area.appendChild(d);
+      });
+
+      document.getElementById('back').addEventListener('click', showDashboard);
+
+    } else if (action === 'retail') {
+      const price = prompt('Enter final selling price (per unit):');
+      if (!price) return;
+
+      const cid = ipfsAdd({ action: 'RETAIL_ARRIVAL', batchId: batch, price, time: new Date().toISOString() });
+      chainEmit({ type: 'RETAIL_ARRIVAL', batchId: batch, cid, actor: 'Retailer' });
+
+      const idx = getBatchIndex();
+      idx[batch].status = 'At Retail';
+      localStorage.setItem('batches', JSON.stringify(idx));
+
+      showDashboard();
+    }
+  });
+
+  // ===== Navigation =====
+  document.getElementById('nav-dashboard').addEventListener('click', showDashboard);
+  document.getElementById('nav-register').addEventListener('click', showRegister);
+  document.getElementById('nav-transport').addEventListener('click', showTransport);
+  document.getElementById('nav-consumer').addEventListener('click', showConsumer);
+
+  document.getElementById('export-state').addEventListener('click', function () {
+    const exportObj = {
+      batches: getBatchIndex(),
+      chainEvents: JSON.parse(localStorage.getItem('chainEvents') || '[]'),
+      ipfs: (function () {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith('ipfs:'));
+        const out = {};
+        keys.forEach(k => out[k] = localStorage.getItem(k));
+        return out;
+      })()
+    };
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'supplychain_state.json';
+    a.click();
+  });
+
+  // ===== Load initial view =====
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const bid = params.get('batch');
+    if (bid) {
+      showConsumer();
+      setTimeout(() => {
+        document.getElementById('scanId')?.value = bid;
+        document.getElementById('do-scan')?.click();
+      }, 250);
+    } else {
+      showDashboard();
+    }
+  })();
+</script>
+</body>
 </html>
