@@ -326,11 +326,15 @@
   });
 
   // ===== Supabase Functions =====
-  async function saveBatchIndex(batch) {
-    const { data, error } = await supabaseClient.from("batches").insert([batch]);
-    if (error) console.error("Error saving batch:", error);
-    return data;
+ async function saveBatchIndex(batch) {
+  const { data, error } = await supabaseClient.from("batches").insert([batch]);
+  if (error) {
+    alert("Error saving batch: " + error.message);  // show popup
+    console.error("Error saving batch:", error);
   }
+  return data;
+}
+
 
   async function getBatchIndex() {
     const { data, error } = await supabaseClient
